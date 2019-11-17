@@ -3,7 +3,7 @@ import os
 import time
 import pickle
 import pdb
-
+import scipy.io
 import numpy as np
 
 import torch
@@ -61,6 +61,13 @@ parser.add_argument('--whitening', '-w', metavar='WHITENING', default=None, choi
 # GPU ID
 parser.add_argument('--gpu-id', '-g', default='0', metavar='N',
                     help="gpu id used for testing (default: '0')")
+
+def get_id(img_path):
+    labels = []
+    for path in img_path:
+        folder_name = os.path.basename(os.path.dirname(path))
+        labels.append(int(folder_name))
+    return labels
 
 def main():
     args = parser.parse_args()
@@ -215,7 +222,6 @@ def main():
 
     else:
         Lw = None
-
     # evaluate on test datasets
     datasets = args.datasets.split(',')
     for dataset in datasets: 
@@ -224,42 +230,33 @@ def main():
         print('>> {}: Extracting...'.format(dataset))
 
         # prepare config structure for the test dataset
-        cfg = configdataset(dataset, os.path.join(get_data_root(), 'test'))
-        images = [cfg['im_fname'](cfg,i) for i in range(cfg['n'])]
-        qimages = [cfg['qim_fname'](cfg,i) for i in range(cfg['nq'])]
-        try:
-            bbxs = [tuple(cfg['gnd'][i]['bbx']) for i in range(cfg['nq'])]
-        except:
-            bbxs = None  # for holidaysmanrot and copydays
-        
+        #cfg = configdataset(dataset, os.path.join(get_data_root(), 'test'))
+        images = []
+        gallery_file = open('/home/zzd/University1652-Baseline/gallery_name.txt')
+        for line in gallery_file:
+            images.append('/home/zzd/University1652-Baseline/'+line.replace('\n','')[2:])
+        #qimages = [cfg['qim_fname'](cfg,i) for i in range(cfg['nq'])]
+        qimages = []
+        query_file = open('/home/zzd/University1652-Baseline/query_name.txt')
+        for line in query_file:
+            qimages.append('/home/zzd/University1652-Baseline/'+line.replace('\n','')[2:])
+
+        gallery_label = get_id(images)
+        query_label = get_id(qimages)
+
         # extract database and query vectors
         print('>> {}: database images...'.format(dataset))
-        vecs = extract_vectors(net, images, args.image_size, transform, ms=ms, msp=msp)
+        gallery_feature = extract_vectors(net, images, args.image_size, transform, ms=ms, msp=msp)
+        gallery_feature = torch.transpose(gallery_feature,0,1)
         print('>> {}: query images...'.format(dataset))
-        qvecs = extract_vectors(net, qimages, args.image_size, transform, bbxs=bbxs, ms=ms, msp=msp)
-        
+        query_feature = extract_vectors(net, qimages, args.image_size, transform,  ms=ms, msp=msp)
+        query_feature = torch.transpose(query_feature,0,1)
+        result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'query_f':query_feature.numpy(),'query_label':query_label}
+        scipy.io.savemat('pytorch_result.mat',result)
+        os.system('python evaluate_gpu.py')
         print('>> {}: Evaluating...'.format(dataset))
-
-        # convert to numpy
-        vecs = vecs.numpy()
-        qvecs = qvecs.numpy()
-
-        # search, rank, and print
-        scores = np.dot(vecs.T, qvecs)
-        ranks = np.argsort(-scores, axis=0)
-        compute_map_and_print(dataset, ranks, cfg['gnd'])
-    
-        if Lw is not None:
-            # whiten the vectors
-            vecs_lw  = whitenapply(vecs, Lw['m'], Lw['P'])
-            qvecs_lw = whitenapply(qvecs, Lw['m'], Lw['P'])
-
-            # search, rank, and print
-            scores = np.dot(vecs_lw.T, qvecs_lw)
-            ranks = np.argsort(-scores, axis=0)
-            compute_map_and_print(dataset + ' + whiten', ranks, cfg['gnd'])
         
-        print('>> {}: elapsed time: {}'.format(dataset, htime(time.time()-start)))
+
 
 
 if __name__ == '__main__':
