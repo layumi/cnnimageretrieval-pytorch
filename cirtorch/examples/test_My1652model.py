@@ -9,8 +9,10 @@ import numpy as np
 import torch
 from torch.utils.model_zoo import load_url
 from torchvision import transforms
+import torch.nn as nn
 
 from cirtorch.networks.imageretrievalnet import init_network, extract_vectors
+from cirtorch.networks.university1652.utils import load_network
 from cirtorch.datasets.datahelpers import cid2filename
 from cirtorch.datasets.testdataset import configdataset
 from cirtorch.utils.download import download_train, download_test
@@ -36,8 +38,8 @@ whitening_names = ['retrieval-SfM-30k', 'retrieval-SfM-120k']
 parser = argparse.ArgumentParser(description='PyTorch CNN Image Retrieval Testing')
 
 # network
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('--network-path', '-npath', metavar='NETWORK',
+group = parser.add_mutually_exclusive_group(required=False)
+group.add_argument('--network-path', '-npath', default = 'retrievalSfM120k-resnet101-gem',metavar='NETWORK',
                     help="pretrained network or network path (destination where network is saved)")
 group.add_argument('--network-offtheshelf', '-noff', metavar='NETWORK',
                     help="off-the-shelf network, in the format 'ARCHITECTURE-POOLING' or 'ARCHITECTURE-POOLING-{reg-lwhiten-whiten}'," + 
@@ -215,6 +217,15 @@ def main():
 
     else:
         Lw = None
+
+    # Load my university model
+    model, _, epoch = load_network('data/networks/three_view_long_share_d0.75_256_s1_google_DA')
+    #model.classifier.classifier = nn.Sequential()
+    model.classifier = nn.Sequential()
+    net = model.eval()
+    net.meta = {}
+    #net.meta['outputdim'] = 512
+    net.meta['outputdim'] = 2048
 
     # evaluate on test datasets
     datasets = args.datasets.split(',')
